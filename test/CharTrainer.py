@@ -35,8 +35,6 @@ from pylab import rcParams
 
 
 
-# In[21]:
-
 
 trainP=True
 useNietzsche=True
@@ -58,8 +56,8 @@ topN=1
 topNStartWord=3
 k_phraseLength=100
 
-k_condNietzsche=[0,0]
-k_condCarroll=[0,0]
+k_condNietzsche=[1,0]
+k_condCarroll=[0,1]
 
 
 # In[22]:
@@ -123,14 +121,11 @@ lenchars=len(chars)
 lenconditional=2
 lenAugmentedInput=lenchars+lenconditional
 
-print(f'unique chars: {len(chars)}')
+#print(f'unique chars: {len(chars)}')
+print('unique chars: ', str(len(chars)))
 #chars
 #indices_char
-#text
 
-
-
-# In[25]:
 
 
 #CREAT TRAINING DATA
@@ -153,7 +148,8 @@ if useCarroll :
         next_chars.append(text2[j + SEQUENCE_LENGTH])
         cond_input.append(k_condCarroll)
 
-print(f'num training examples: {len(sentences)}')
+#print(f'num training examples: {len(sentences)}')
+print('num training examples:  ', str(len(sentences)))
 
 
 # In[26]:
@@ -234,5 +230,4 @@ if trainP :
 
 
 # In[32]:
-
 
