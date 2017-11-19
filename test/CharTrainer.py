@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[31]:
+# In[106]:
 
 
 #https://medium.com/@curiousily/making-a-predictive-keyboard-using-recurrent-neural-networks-tensorflow-for-hackers-part-v-3f238d824218
@@ -39,33 +39,33 @@ sns.set(style='whitegrid', palette='muted', font_scale=1.5)
 rcParams['figure.figsize'] = 12, 5
 
 
-# In[32]:
+# In[107]:
 
 
 trainP=True
-useNietzsche=True
+useNietzsche=False
 useCarroll=False
+useShakespeare=True
 
-#FILENAME="carroll.3.20"   #for writing or reading
-#FILENAME="nietzsche.3.20"   #for writing or reading
 LOGDIR="LOG"
-RUNNAME="nietStep3Seq50"
+RUNNAME="minishakespeareStep3Seq50"
 FILENAME=LOGDIR + "/" + RUNNAME
 
 if not os.path.exists(LOGDIR):
     os.makedirs(LOGDIR)
 
 SEQUENCE_LENGTH = 50
-EPOCHS=1
+EPOCHS=15
 step = 3   #skip this number of chars for generating new training sequences
 layer1size=128
 topN=1
 topNStartWord=3
 k_phraseLength=100
 
-k_layers=1
+k_layers=2
 k_bn=True
 k_batchsize=128
+k_lr=.005
 
 k_stateful=False
 k_shuffle=True
@@ -74,11 +74,13 @@ if (k_stateful) :
     
 k_validationSplit=.1
     
-k_condNietzsche=[1,0]
-k_condCarroll=[0,1]
+k_condNietzsche=[1,0,0]
+k_condCarroll=[0,1,0]
+k_condShakespeare=[0,0,1]
+lenconditional=len(k_condNietzsche) # the are all the same length, of course
 
 
-# In[33]:
+# In[108]:
 
 
 import re as re
@@ -86,9 +88,9 @@ def cleanText(text) :
     # replace all numbers followed by an optional letter and then a dot (eg numbered paragraphs)                                    
     text = re.sub("(^|\W)\d+[a-zA-Z]*($|\W|\.)", "", text)
     #escaped apotrophes                                                                                                             
-    text = text.replace('\n', ' ').replace("\'", "'").replace("\"","").replace('[Illustration]',"").replace('*',"")
+    #text = text.replace('\n', ' ').replace("\'", "'").replace("\"","").replace('[Illustration]',"").replace('*',"")
+    text = text.replace("\'", "'").replace("\"","").replace('[Illustration]',"").replace('*',"")
     #repeated white space
-    text=re.sub('\s{2,}',' ', text)
     text=re.sub('â', 'a', text)
     text=re.sub('æ', 'a', text)
     text=re.sub('è', 'e', text)
@@ -115,6 +117,7 @@ def cleanText(text) :
 
 text1=""
 text2=""
+text3=""
 
 if useNietzsche :
     path = 'nietzsche.txt'
@@ -128,7 +131,13 @@ if useCarroll :
     print('corpus 2 length:', len(text2))
     print("CARROLL CHARS: ", sorted(list(set(text2))))
 
-text=text1+text2
+if useShakespeare :
+    path = 'minishakespeare.txt'
+    text3 = cleanText(open(path, 'r', encoding='utf-8').read().lower())
+    print('corpus 3 length:', len(text3))
+    print("SHAKESPEARE CHARS: ", sorted(list(set(text3))))
+    
+text=text1+text2+text3
 print('total cleaned corpus length is ', len(text))
 
 chars = sorted(list(set(text)))
@@ -136,7 +145,6 @@ char_indices = dict((c, i) for i, c in enumerate(chars))
 indices_char = dict((i, c) for i, c in enumerate(chars))
 
 lenchars=len(chars)
-lenconditional=2
 lenAugmentedInput=lenchars+lenconditional
 
 #print(f'unique chars: {len(chars)}')
@@ -146,7 +154,7 @@ print('unique chars: ', str(len(chars)))
 #text
 
 
-# In[41]:
+# In[109]:
 
 
 #CREAT TRAINING DATA
@@ -160,6 +168,7 @@ cond_input=[]
 #grab as many full batches as possible, ignoring partial batch left over
 samples1= (int(len(text1)/step) - SEQUENCE_LENGTH)-(int(len(text1)/step) - SEQUENCE_LENGTH)%k_batchsize
 samples2= (int(len(text2)/step) - SEQUENCE_LENGTH)-(int(len(text2)/step) - SEQUENCE_LENGTH)%k_batchsize
+samples3= (int(len(text3)/step) - SEQUENCE_LENGTH)-(int(len(text3)/step) - SEQUENCE_LENGTH)%k_batchsize
 
 if useNietzsche :
     for i in range(0, samples1*step, step):
@@ -172,6 +181,13 @@ if useCarroll :
         sentences.append(text2[j: j + SEQUENCE_LENGTH])
         next_chars.append(text2[j + SEQUENCE_LENGTH])
         cond_input.append(k_condCarroll)
+
+if useShakespeare :
+    for k in range(0, samples3*step, step):
+        sentences.append(text3[k: k + SEQUENCE_LENGTH])
+        next_chars.append(text3[k + SEQUENCE_LENGTH])
+        cond_input.append(k_condShakespeare)
+
 
 #print(f'num training examples: {len(sentences)}')
 print('num training examples:  ', str(len(sentences)))
@@ -187,18 +203,11 @@ if (True) : # (k_stateful) : # ALWAYS do full batches for training and testing (
     print('k_validationSplit:  ', str(k_validationSplit))
 
 
-# In[42]:
-
-
-(123904*k_validationSplit)%128
-
-
-
-# In[43]:
+# In[110]:
 
 
 # save parameters of run
-param={'FILENAME': FILENAME, 'RUNNAME': RUNNAME, 'SEQUENCE_LENGTH': SEQUENCE_LENGTH, 'EPOCHS': EPOCHS, 'step': step, 'layer1size': layer1size, 'k_layers': k_layers, 'k_bn': k_bn, 'k_batchsize': k_batchsize, 'k_stateful': k_stateful, 'k_shuffle': k_shuffle, 'k_validationSplit': k_validationSplit}  
+param={'FILENAME': FILENAME, 'RUNNAME': RUNNAME, 'SEQUENCE_LENGTH': SEQUENCE_LENGTH, 'EPOCHS': EPOCHS, 'step': step, 'layer1size': layer1size, 'k_layers': k_layers, 'k_bn': k_bn, 'k_batchsize': k_batchsize, 'k_lr': k_lr, 'k_stateful': k_stateful, 'k_shuffle': k_shuffle, 'k_validationSplit': k_validationSplit, 'chars': chars}  
 
 with open(FILENAME + '.params.pkl', 'wb') as f:  
     pickle.dump(param, f)
@@ -211,7 +220,7 @@ for key, value in param.items():
     print(key,  " : ", value)
 
 
-# In[44]:
+# In[111]:
 
 
 # generate features and labels - one-host versions of the input and prediction vectors
@@ -225,13 +234,13 @@ for i, sentence in enumerate(sentences):
     y[i, char_indices[next_chars[i]]] = 1
 
 
-# In[46]:
+# In[112]:
 
 
 k_validationSplit*len(y)/128
 
 
-# In[47]:
+# In[113]:
 
 
 
@@ -241,43 +250,46 @@ print("a character in a sentice is ", X[1410][0] )
 print(str(X.shape))   #training_samples, SEQUENCE_LENGTH, lenAugmentedInput
 
 
-# In[48]:
+# In[114]:
+
+
+for i in range(k_layers) :
+    print( str(i))
+
+
+# In[115]:
 
 
 #LST layer with 128 neurons
 # takes a shape which is 
 model = Sequential()
 
-if (k_layers==1) :
-    model.add(LSTM(layer1size,  batch_size=k_batchsize, stateful=k_stateful, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
-else :
-    model.add(LSTM(layer1size,   batch_size=k_batchsize, stateful=k_stateful, return_sequences=True, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
-    
+for i in range(k_layers) :
+    #if last layer, don't return sequence
+    if i==(k_layers-1) :
+        model.add(LSTM(layer1size,  batch_size=k_batchsize, stateful=k_stateful, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+    else :
+        model.add(LSTM(layer1size,   batch_size=k_batchsize, stateful=k_stateful, return_sequences=True, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+        
+    #FAIL model.add(LSTM(layer1size, dropout=0.25, recurrent_dropout=0.25, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+    #FAIL model.add(GRU(layer1size,  input_shape=(SEQUENCE_LENGTH, lenAugmentedInput), kernel_regularizer=regularizers.l2(0.1), recurrent_regularizer=regularizers.l2(0.1), bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
 
-#FAIL model.add(LSTM(layer1size, dropout=0.25, recurrent_dropout=0.25, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
-#FAIL model.add(GRU(layer1size,  input_shape=(SEQUENCE_LENGTH, lenAugmentedInput), kernel_regularizer=regularizers.l2(0.1), recurrent_regularizer=regularizers.l2(0.1), bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
+    if (k_bn) : 
+        model.add(BatchNormalization())
 
 #model.add(Dense(lenchars, kernel_regularizer=regularizers.l2(0.1),  bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
 #model.add(Dense(lenchars, kernel_regularizer=regularizers.l2(0.1),  bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
-#
-
-if (k_bn) : 
-    model.add(BatchNormalization())
-
-if (k_layers==2) :
-    model.add(LSTM(layer1size))
-    
 model.add(Dense(lenchars))
 model.add(Activation('softmax'))
 
 
-# In[49]:
+# In[116]:
 
 
 # Train. Validate with 5% of the examples
 
 if trainP :
-    optimizer = RMSprop(lr=0.01)
+    optimizer = RMSprop(lr=k_lr)
     model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
     
     # checkpoint
