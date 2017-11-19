@@ -1,13 +1,13 @@
 
 # coding: utf-8
 
-# In[20]:
+# In[31]:
 
 
 #https://medium.com/@curiousily/making-a-predictive-keyboard-using-recurrent-neural-networks-tensorflow-for-hackers-part-v-3f238d824218
 # note: I trained on alice in wonderland, about 1/4 the length of his Nietzsche data set.
 # I also tested with "seeds" that come from his Nietzsche examples!
-# TODO 
+# TODO history
 #    - what happens if you let it run further by itself? 
 #   - Use  GRU instead of LSTM
 
@@ -34,21 +34,28 @@ import seaborn as sns
 from pylab import rcParams
 
 
+get_ipython().magic('matplotlib inline')
+sns.set(style='whitegrid', palette='muted', font_scale=1.5)
+rcParams['figure.figsize'] = 12, 5
+
+
+# In[32]:
 
 
 trainP=True
 useNietzsche=True
-useCarroll=True
+useCarroll=False
 
 #FILENAME="carroll.3.20"   #for writing or reading
 #FILENAME="nietzsche.3.20"   #for writing or reading
 LOGDIR="LOG"
-FILENAME=LOGDIR + "/foobar"
+RUNNAME="nietStep3Seq50"
+FILENAME=LOGDIR + "/" + RUNNAME
 
 if not os.path.exists(LOGDIR):
     os.makedirs(LOGDIR)
 
-SEQUENCE_LENGTH = 40
+SEQUENCE_LENGTH = 50
 EPOCHS=1
 step = 3   #skip this number of chars for generating new training sequences
 layer1size=128
@@ -56,11 +63,22 @@ topN=1
 topNStartWord=3
 k_phraseLength=100
 
+k_layers=1
+k_bn=True
+k_batchsize=128
+
+k_stateful=False
+k_shuffle=True
+if (k_stateful) :
+    k_shuffle=False
+    
+k_validationSplit=.1
+    
 k_condNietzsche=[1,0]
 k_condCarroll=[0,1]
 
 
-# In[22]:
+# In[33]:
 
 
 import re as re
@@ -102,7 +120,7 @@ if useNietzsche :
     path = 'nietzsche.txt'
     text1 = cleanText(open(path, 'r', encoding='utf-8').read().lower())
     print('corpus 1 length:', len(text1))
-    print("NIETZXCHE CHARS: ", sorted(list(set(text1))))
+    print("NIETZSCHE CHARS: ", sorted(list(set(text1))))
     
 if useCarroll :
     path = 'carroll.txt'
@@ -125,7 +143,10 @@ lenAugmentedInput=lenchars+lenconditional
 print('unique chars: ', str(len(chars)))
 #chars
 #indices_char
+#text
 
+
+# In[41]:
 
 
 #CREAT TRAINING DATA
@@ -136,23 +157,61 @@ sentences = []
 next_chars = []
 cond_input=[]
 
+#grab as many full batches as possible, ignoring partial batch left over
+samples1= (int(len(text1)/step) - SEQUENCE_LENGTH)-(int(len(text1)/step) - SEQUENCE_LENGTH)%k_batchsize
+samples2= (int(len(text2)/step) - SEQUENCE_LENGTH)-(int(len(text2)/step) - SEQUENCE_LENGTH)%k_batchsize
+
 if useNietzsche :
-    for i in range(0, len(text1) - SEQUENCE_LENGTH, step):
+    for i in range(0, samples1*step, step):
         sentences.append(text1[i: i + SEQUENCE_LENGTH])
         next_chars.append(text1[i + SEQUENCE_LENGTH])
         cond_input.append(k_condNietzsche)
 
 if useCarroll :
-    for j in range(0, len(text2) - SEQUENCE_LENGTH, step):
+    for j in range(0, samples2*step, step):
         sentences.append(text2[j: j + SEQUENCE_LENGTH])
         next_chars.append(text2[j + SEQUENCE_LENGTH])
         cond_input.append(k_condCarroll)
 
 #print(f'num training examples: {len(sentences)}')
 print('num training examples:  ', str(len(sentences)))
+print('num batches:  ', str(len(sentences)/k_batchsize))
+
+if (True) : # (k_stateful) : # ALWAYS do full batches for training and testing (required for k_stateful, anyway)
+    # adjust the validation split so that it has an integer number of batches of size k_batchsize
+    numvexamples=k_validationSplit*len(sentences)  #target number
+    numvexamples=numvexamples-numvexamples%k_batchsize #divisible by batch size
+    k_validationSplit=numvexamples/len(sentences) #adjusted split number for fit()
+
+    print('num validation examples:  ', str(numvexamples))
+    print('k_validationSplit:  ', str(k_validationSplit))
 
 
-# In[26]:
+# In[42]:
+
+
+(123904*k_validationSplit)%128
+
+
+
+# In[43]:
+
+
+# save parameters of run
+param={'FILENAME': FILENAME, 'RUNNAME': RUNNAME, 'SEQUENCE_LENGTH': SEQUENCE_LENGTH, 'EPOCHS': EPOCHS, 'step': step, 'layer1size': layer1size, 'k_layers': k_layers, 'k_bn': k_bn, 'k_batchsize': k_batchsize, 'k_stateful': k_stateful, 'k_shuffle': k_shuffle, 'k_validationSplit': k_validationSplit}  
+
+with open(FILENAME + '.params.pkl', 'wb') as f:  
+    pickle.dump(param, f)
+    
+#CHECK: get parameters from training param file
+with open(FILENAME + '.params.pkl', 'rb') as f:  
+    param = pickle.load(f)
+# and PRINT
+for key, value in param.items():
+    print(key,  " : ", value)
+
+
+# In[44]:
 
 
 # generate features and labels - one-host versions of the input and prediction vectors
@@ -166,51 +225,56 @@ for i, sentence in enumerate(sentences):
     y[i, char_indices[next_chars[i]]] = 1
 
 
-# In[27]:
+# In[46]:
+
+
+k_validationSplit*len(y)/128
+
+
+# In[47]:
 
 
 
 print("len of first input vector, first character vector x is ", str(len(X[0][0])))
-print("a character in a sentice is ", X[141000][0] )
-
-
-# In[28]:
-
+print("a character in a sentice is ", X[1410][0] )
 
 print(str(X.shape))   #training_samples, SEQUENCE_LENGTH, lenAugmentedInput
 
 
-# In[29]:
+# In[48]:
 
 
 #LST layer with 128 neurons
 # takes a shape which is 
 model = Sequential()
-model.add(LSTM(layer1size,  input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+
+if (k_layers==1) :
+    model.add(LSTM(layer1size,  batch_size=k_batchsize, stateful=k_stateful, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+else :
+    model.add(LSTM(layer1size,   batch_size=k_batchsize, stateful=k_stateful, return_sequences=True, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
+    
 
 #FAIL model.add(LSTM(layer1size, dropout=0.25, recurrent_dropout=0.25, input_shape=(SEQUENCE_LENGTH, lenAugmentedInput)))
 #FAIL model.add(GRU(layer1size,  input_shape=(SEQUENCE_LENGTH, lenAugmentedInput), kernel_regularizer=regularizers.l2(0.1), recurrent_regularizer=regularizers.l2(0.1), bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
 
 #model.add(Dense(lenchars, kernel_regularizer=regularizers.l2(0.1),  bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
 #model.add(Dense(lenchars, kernel_regularizer=regularizers.l2(0.1),  bias_regularizer=regularizers.l2(0.1), activity_regularizer=regularizers.l2(0.1)))
-model.add(BatchNormalization())
-#model.add(Dropout(0.5))
-model.add(Dense(lenchars))
+#
 
+if (k_bn) : 
+    model.add(BatchNormalization())
+
+if (k_layers==2) :
+    model.add(LSTM(layer1size))
+    
+model.add(Dense(lenchars))
 model.add(Activation('softmax'))
 
 
-# In[30]:
-
-
-FILENAME + '.history.p'
-
-
-# In[31]:
+# In[49]:
 
 
 # Train. Validate with 5% of the examples
-
 
 if trainP :
     optimizer = RMSprop(lr=0.01)
@@ -222,12 +286,9 @@ if trainP :
     callbacks_list = [checkpoint]
 
 
-    history = model.fit(X, y, validation_split=0.1, batch_size=128, epochs=EPOCHS, shuffle=True, callbacks=callbacks_list).history
+    history = model.fit(X, y, validation_split=k_validationSplit, batch_size=k_batchsize, epochs=EPOCHS, shuffle=k_shuffle, callbacks=callbacks_list).history
 
     #Save (How does this work ??)
     model.save(FILENAME + '.keras_model.h5')
-    pickle.dump(history, open(FILENAME + 'history.p', 'wb'))
-
-
-# In[32]:
+    pickle.dump(history, open(FILENAME + '.history.p', 'wb'))
 
